@@ -1,4 +1,4 @@
-./v2rayManager/config/*.json
+v2rayManager/config/
 .DS_Store
 .idea
 v2rayManager/v2ray/config.json
