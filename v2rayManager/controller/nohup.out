@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "SystemTray.py", line 13, in <module>
+    from resource import source
+ImportError: cannot import name 'source' from 'resource' (/usr/local/Cellar/python/3.7.0/Frameworks/Python.framework/Versions/3.7/lib/python3.7/lib-dynload/resource.cpython-37m-darwin.so)
+QObject::startTimer: Timers cannot be started from another thread
+QObject::startTimer: Timers cannot be started from another thread
+QObject::startTimer: Timers cannot be started from another thread

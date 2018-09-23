@@ -1,13 +1,21 @@
-from PyQt5.QtGui import QIcon
+from PyQt5 import QtCore
+from PyQt5.QtGui import QIcon, QFont
 from PyQt5.QtWidgets import QSystemTrayIcon, QAction, QApplication, QMenu, \
-    QMessageBox, QWidget
+    QMessageBox, QWidget, QHBoxLayout, QMainWindow
 import os
 import sys, json
 from ProcessServers import ProcessServers
 from SwitchV2ray import SwitchV2ray
 import threading
+import Ping
+import threading, re, prettytable
+from scanServer import ScanServer
+sys.path.append("../view")
+from ServerConfigController import ServerConfigView
 
-# lib_path = path.abspath(path.join('..'))
+
+
+# lib_path = os.path.abspath(os.path.join('..'))
 # sys.path.append(lib_path)
 
 from resource import source
@@ -19,6 +27,9 @@ class SystemTray(QWidget):
         super(SystemTray, self).__init__(parent)
         with open("../config/manager.json", 'r') as f:
             self.config = json.load(f)
+        with open("../config/Servers.json", 'r') as f:
+            self.s = json.load(f)
+        self.lock = threading.Lock()
         self.createActions()
         self.createTrayIcon()
         self.trayIcon.show()
@@ -54,6 +65,8 @@ class SystemTray(QWidget):
             return
         switch = SwitchV2ray()
         result = switch.changeServer(i)
+        with open("../config/manager.json", 'r') as f:
+            self.config = json.load(f)
         if result:
             self.infoAction.setText("v2ray: on")
             self.switchAction.setText("关闭 v2ray")
@@ -76,12 +89,16 @@ class SystemTray(QWidget):
         if sender.text() == "智能 rule 模式":
             self.turnGlobalOnAction.setChecked(False)
             result = switch.switchRule()
+            with open("../config/manager.json", 'r') as f:
+                self.config = json.load(f)
             if result:
                 self.showMessage("切换 Rule 模式成功", "当前服务器: {}".format(
                     self.config["server"]["ps"]), 5)
         else:
             self.turnRuleOnAction.setChecked(False)
             result = switch.switchGlobal()
+            with open("../config/manager.json", 'r') as f:
+                self.config = json.load(f)
             if result:
                 self.showMessage("切换全局模式成功", "当前服务器: {}".format(
                     self.config["server"]["ps"]), 5)
@@ -94,6 +111,52 @@ class SystemTray(QWidget):
     def showMessage(self, title, body, duration):
         self.trayIcon.showMessage(title, body, QIcon(':pic/pic/v2rayIcon.png'),
                                   duration * 1000)
+
+    def Tcp(self, tb, server, i):
+        ping = Ping.Ping(server["add"], int(server["port"]))
+        ping.ping(5)
+        time = ping.delay
+        if time == "0.00ms":
+            time = "连接超时"
+        self.lock.acquire()
+        try:
+            tb.field_names = ["i", "server", "delay"]
+            tb.set_style(prettytable.PLAIN_COLUMNS)
+            tb.add_row([i, self.servers.actions()[i].text(), time])
+            tb.align = "l"
+        except:
+            pass
+        finally:
+            self.lock.release()
+
+    def completeScan(self):
+        #print("complete")
+        self.tb.sortby = "i"
+        self.tb.align["server"] = 'l'
+        self.tb.align["      delay"] = 'c'
+        self.tb.right_padding_width = 0
+
+        s = self.tb.get_string(fields=["server", "      delay"]).split("\n")[1:]
+        #print(s)
+        i = 0
+        for item in s:
+            self.servers.actions()[i].setText(item)
+            i += 1
+
+
+    def threadScanServer(self):
+        self.tb = prettytable.PrettyTable()
+        self.tb.align = "l"
+        self.tb.field_names = ["i", "server", "      delay"]
+        self.tb.set_style(prettytable.PLAIN_COLUMNS)
+        scan = ScanServer(self.s, self.tb)
+        scan.start()
+        scan.finished.connect(self.completeScan)
+        
+    def configServers(self):
+        # self.configServer.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
+        self.configServer.setFocus()
+        self.configServer.show()
 
     def createActions(self):
 
@@ -126,21 +189,26 @@ class SystemTray(QWidget):
         p.getServerLists()
         serverList = p.serverList
         i = 0
-        try:
-            current = self.config["server"]["ps"].split("-")[1] + \
-                      self.config["server"]["ps"].split("-")[2]
-        except:
-            current = self.config["server"]["ps"].split(" ")[0]
-
+        current = self.config["server"]["ps"]
         for server in serverList:
             action = QAction(server, self, checkable=True,
                              triggered=self.changeServer)
+            # hLayout = QHBoxLayout()
+            font = QFont()
+            font.setFamily("Menlo")
+            font.setBold(True)
+            font.setWeight(75)
+            font.setPointSize(10)
+            action.setFont(font)
             self.servers.addAction(action)
-            if server.split("-")[1] == current:
+            if "-".join(server.split("-")[1:]) == current:
                 action.setChecked(True)
             i += 1
 
-        self.serversScanAction = QAction("服务器测速", self)
+        self.serversScanAction = QAction("服务器测速", self,
+                                         triggered=self.threadScanServer)
+        self.serverConfigAction = QAction("服务器设置", self, triggered=self.configServers)
+        self.configServer = ServerConfigView()
         self.seniorSettingsAction = QAction("高级设置", self)
         self.httpProxySettingsAction = QAction("HTTP 代理设置", self)
         self.autoConnectAction = QAction("打开时自动连接", self, checkable=True)
@@ -168,6 +236,7 @@ class SystemTray(QWidget):
 
         self.trayMenu.addMenu(self.servers)
         self.trayMenu.addAction(self.serversScanAction)
+        self.trayMenu.addAction(self.serverConfigAction)
         self.trayMenu.addAction(self.seniorSettingsAction)
         self.trayMenu.addAction(self.httpProxySettingsAction)
         self.trayMenu.addAction(self.autoConnectAction)

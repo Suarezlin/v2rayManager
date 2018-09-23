@@ -19,11 +19,7 @@ class ProcessServers():
         result = []
         i = 1
         for server in self.servers:
-            try:
-                a = server["ps"].split("-")[1] + server["ps"].split("-")[2]
-            except:
-                a = server["ps"].split(" ")[0]
-            result.append("{}-{}".format(i, a))
+            result.append("{}-{}".format(i, server["ps"]))
             i += 1
         self.serverList = result
 
